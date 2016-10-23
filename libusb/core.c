@@ -1299,6 +1299,53 @@ int API_EXPORTED libusb_open(libusb_device *dev,
 	return 0;
 }
 
+#if defined(OS_LINUX)
+/** \ingroup libusb_dev
+ * Obtain a device handle for a device you've already opened yourself and thus
+ * have a file-descriptor for.  This handle allows you to perform I/O on the
+ * device in question.
+ *
+ * The provided device handle will have no associated libusb_device, therefore
+ * libusb_get_device() will return NULL on handles created with this function.
+ *
+ * This is a non-blocking function; no requests are sent over the bus.
+ *
+ * This function is only available on Linux.
+ *
+ * \param ctx the context to operate on, or NULL for the default context
+ * \param fd open file handle to the device.  This function takes ownership of
+ * the fd.
+ * \param handle output location for the returned device handle pointer. Only
+ * populated when the return code is 0.
+ * \returns a device handle or NULL on memory allocation failure
+ * \since v1.0.22
+ */
+DEFAULT_VISIBILITY
+libusb_device_handle * LIBUSB_CALL libusb_open_device_with_fd(
+	libusb_context *ctx, int fd)
+{
+	struct libusb_device_handle *_dev_handle;
+	int r;
+	usbi_dbg("open_fd %d", fd);
+
+	r = usbi_device_handle_new(NULL, &_dev_handle);
+	if (r < 0)
+		return NULL;
+
+	r = usbi_backend->open_fd(_dev_handle, fd);
+	if (r < 0) {
+		usbi_dbg("open_fd %d returns %d", fd, r);
+		usbi_device_handle_delete(_dev_handle);
+		return NULL;
+	}
+
+	usbi_mutex_lock(&ctx->open_devs_lock);
+	list_add(&_dev_handle->list, &ctx->open_devs);
+	usbi_mutex_unlock(&ctx->open_devs_lock);
+	return _dev_handle;
+}
+#endif /* defined(OS_LINUX) */
+
 /** \ingroup libusb_dev
  * Convenience function for finding a device with a particular
  * <tt>idVendor</tt>/<tt>idProduct</tt> combination. This function is intended
@@ -1471,8 +1518,13 @@ void API_EXPORTED libusb_close(libusb_device_handle *dev_handle)
  * Get the underlying device for a device handle. This function does not modify
  * the reference count of the returned device, so do not feel compelled to
  * unreference it when you are done.
+ *
+ * device_handles created with libusb_open_fd do not have an associated device
+ * and this function will return NULL in that case.
+ *
  * \param dev_handle a device handle
- * \returns the underlying device
+ * \returns the underlying device or NULL if handle was created with
+ *     libusb_open_fd
  */
 DEFAULT_VISIBILITY
 libusb_device * LIBUSB_CALL libusb_get_device(libusb_device_handle *dev_handle)

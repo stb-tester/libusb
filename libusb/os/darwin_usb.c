@@ -2059,6 +2059,7 @@ const struct usbi_os_backend darwin_backend = {
         .hotplug_poll = darwin_hotplug_poll,
 
         .open = darwin_open,
+        .open_fd = NULL, /* not implemented */
         .close = darwin_close,
         .get_configuration = darwin_get_configuration,
         .set_configuration = darwin_set_configuration,
