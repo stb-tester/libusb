@@ -1622,7 +1622,7 @@ int API_EXPORTED libusb_claim_interface(libusb_device_handle *dev_handle,
 	if (interface_number >= USB_MAXINTERFACES)
 		return LIBUSB_ERROR_INVALID_PARAM;
 
-	if (!dev_handle->dev->attached)
+	if (usbi_handle_detached(dev_handle))
 		return LIBUSB_ERROR_NO_DEVICE;
 
 	usbi_mutex_lock(&dev_handle->lock);
@@ -1711,7 +1711,7 @@ int API_EXPORTED libusb_set_interface_alt_setting(libusb_device_handle *dev_hand
 		return LIBUSB_ERROR_INVALID_PARAM;
 
 	usbi_mutex_lock(&dev_handle->lock);
-	if (!dev_handle->dev->attached) {
+	if (usbi_handle_detached(dev_handle)) {
 		usbi_mutex_unlock(&dev_handle->lock);
 		return LIBUSB_ERROR_NO_DEVICE;
 	}
@@ -1746,7 +1746,7 @@ int API_EXPORTED libusb_clear_halt(libusb_device_handle *dev_handle,
 	unsigned char endpoint)
 {
 	usbi_dbg("endpoint %x", endpoint);
-	if (!dev_handle->dev->attached)
+	if (usbi_handle_detached(dev_handle))
 		return LIBUSB_ERROR_NO_DEVICE;
 
 	return usbi_backend->clear_halt(dev_handle, endpoint);
@@ -1774,7 +1774,7 @@ int API_EXPORTED libusb_clear_halt(libusb_device_handle *dev_handle,
 int API_EXPORTED libusb_reset_device(libusb_device_handle *dev_handle)
 {
 	usbi_dbg("");
-	if (!dev_handle->dev->attached)
+	if (usbi_handle_detached(dev_handle))
 		return LIBUSB_ERROR_NO_DEVICE;
 
 	return usbi_backend->reset_device(dev_handle);
@@ -1806,7 +1806,7 @@ int API_EXPORTED libusb_alloc_streams(libusb_device_handle *dev_handle,
 {
 	usbi_dbg("streams %u eps %d", (unsigned) num_streams, num_endpoints);
 
-	if (!dev_handle->dev->attached)
+	if (usbi_handle_detached(dev_handle))
 		return LIBUSB_ERROR_NO_DEVICE;
 
 	if (usbi_backend->alloc_streams)
@@ -1833,7 +1833,7 @@ int API_EXPORTED libusb_free_streams(libusb_device_handle *dev_handle,
 {
 	usbi_dbg("eps %d", num_endpoints);
 
-	if (!dev_handle->dev->attached)
+	if (usbi_handle_detached(dev_handle))
 		return LIBUSB_ERROR_NO_DEVICE;
 
 	if (usbi_backend->free_streams)
@@ -1871,7 +1871,7 @@ DEFAULT_VISIBILITY
 unsigned char * LIBUSB_CALL libusb_dev_mem_alloc(libusb_device_handle *dev_handle,
         size_t length)
 {
-	if (!dev_handle->dev->attached)
+	if (usbi_handle_detached(dev_handle))
 		return NULL;
 
 	if (usbi_backend->dev_mem_alloc)
@@ -1919,7 +1919,7 @@ int API_EXPORTED libusb_kernel_driver_active(libusb_device_handle *dev_handle,
 {
 	usbi_dbg("interface %d", interface_number);
 
-	if (!dev_handle->dev->attached)
+	if (usbi_handle_detached(dev_handle))
 		return LIBUSB_ERROR_NO_DEVICE;
 
 	if (usbi_backend->kernel_driver_active)
@@ -1954,7 +1954,7 @@ int API_EXPORTED libusb_detach_kernel_driver(libusb_device_handle *dev_handle,
 {
 	usbi_dbg("interface %d", interface_number);
 
-	if (!dev_handle->dev->attached)
+	if (usbi_handle_detached(dev_handle))
 		return LIBUSB_ERROR_NO_DEVICE;
 
 	if (usbi_backend->detach_kernel_driver)
@@ -1988,7 +1988,7 @@ int API_EXPORTED libusb_attach_kernel_driver(libusb_device_handle *dev_handle,
 {
 	usbi_dbg("interface %d", interface_number);
 
-	if (!dev_handle->dev->attached)
+	if (usbi_handle_detached(dev_handle))
 		return LIBUSB_ERROR_NO_DEVICE;
 
 	if (usbi_backend->attach_kernel_driver)

@@ -1334,6 +1334,11 @@ static int op_get_configuration(struct libusb_device_handle *handle,
 	int *config)
 {
 	int r;
+	if (!handle->dev) {
+		/* libusb_get_configuration will fall back to querying the
+		 * device */
+		return LIBUSB_ERROR_NOT_SUPPORTED;
+	}
 
 	if (sysfs_can_relate_devices) {
 		r = sysfs_get_active_config(handle->dev, config);
@@ -1356,7 +1361,6 @@ static int op_get_configuration(struct libusb_device_handle *handle,
 
 static int op_set_configuration(struct libusb_device_handle *handle, int config)
 {
-	struct linux_device_priv *priv = _device_priv(handle->dev);
 	int fd = _device_handle_priv(handle)->fd;
 	int r = ioctl(fd, IOCTL_USBFS_SETCONFIG, &config);
 	if (r) {
@@ -1372,7 +1376,8 @@ static int op_set_configuration(struct libusb_device_handle *handle, int config)
 	}
 
 	/* update our cached active config descriptor */
-	priv->active_config = config;
+	if (handle->dev)
+		_device_priv(handle->dev)->active_config = config;
 
 	return LIBUSB_SUCCESS;
 }
@@ -2633,7 +2638,7 @@ static int op_handle_events(struct libusb_context *ctx,
 			/* device will still be marked as attached if hotplug monitor thread
 			 * hasn't processed remove event yet */
 			usbi_mutex_static_lock(&linux_hotplug_lock);
-			if (handle->dev->attached)
+			if (usbi_handle_detached(handle))
 				linux_device_disconnected(handle->dev->bus_number,
 						handle->dev->device_address);
 			usbi_mutex_static_unlock(&linux_hotplug_lock);

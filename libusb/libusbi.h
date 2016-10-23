@@ -417,6 +417,14 @@ struct libusb_device_handle {
 #endif
 };
 
+static inline int usbi_handle_detached(struct libusb_device_handle* dev_handle)
+{
+	/* If we have a device_handle without an associated device we have to just
+	 * assume that the device is still attached.  If it gets detached the next
+	 * function that tries to interact with it will fail anyway. */
+	return dev_handle->dev && !dev_handle->dev->attached;
+}
+
 enum {
 	USBI_CLOCK_MONOTONIC,
 	USBI_CLOCK_REALTIME
