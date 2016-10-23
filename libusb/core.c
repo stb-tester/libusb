@@ -1218,6 +1218,37 @@ int usbi_clear_event(struct libusb_context *ctx)
 	return 0;
 }
 
+static int usbi_device_handle_new(libusb_device * dev, libusb_device_handle ** dev_handle)
+{
+	int r;
+	libusb_device_handle* _dev_handle;
+
+	_dev_handle = calloc(1, sizeof(*_dev_handle) + usbi_backend->device_handle_priv_size);
+	if (!_dev_handle)
+		return LIBUSB_ERROR_NO_MEM;
+
+	r = usbi_mutex_init(&_dev_handle->lock);
+	if (r) {
+		free(_dev_handle);
+		return LIBUSB_ERROR_OTHER;
+	}
+
+	if (dev)
+		_dev_handle->dev = libusb_ref_device(dev);
+
+	*dev_handle = _dev_handle;
+	return 0;
+}
+
+static void usbi_device_handle_delete(libusb_device_handle * dev_handle)
+{
+	if (dev_handle) {
+		libusb_unref_device(dev_handle->dev);
+		usbi_mutex_destroy(&dev_handle->lock);
+		free(dev_handle);
+	}
+}
+
 /** \ingroup libusb_dev
  * Open a device and obtain a device handle. A handle allows you to perform
  * I/O on the device in question.
@@ -1242,7 +1273,6 @@ int API_EXPORTED libusb_open(libusb_device *dev,
 {
 	struct libusb_context *ctx = DEVICE_CTX(dev);
 	struct libusb_device_handle *_dev_handle;
-	size_t priv_size = usbi_backend->device_handle_priv_size;
 	int r;
 	usbi_dbg("open %d.%d", dev->bus_number, dev->device_address);
 
@@ -1250,27 +1280,14 @@ int API_EXPORTED libusb_open(libusb_device *dev,
 		return LIBUSB_ERROR_NO_DEVICE;
 	}
 
-	_dev_handle = malloc(sizeof(*_dev_handle) + priv_size);
-	if (!_dev_handle)
-		return LIBUSB_ERROR_NO_MEM;
-
-	r = usbi_mutex_init(&_dev_handle->lock);
-	if (r) {
-		free(_dev_handle);
-		return LIBUSB_ERROR_OTHER;
-	}
-
-	_dev_handle->dev = libusb_ref_device(dev);
-	_dev_handle->auto_detach_kernel_driver = 0;
-	_dev_handle->claimed_interfaces = 0;
-	memset(&_dev_handle->os_priv, 0, priv_size);
+	r = usbi_device_handle_new(dev, &_dev_handle);
+	if (r < 0)
+		return r;
 
 	r = usbi_backend->open(_dev_handle);
 	if (r < 0) {
 		usbi_dbg("open %d.%d returns %d", dev->bus_number, dev->device_address, r);
-		libusb_unref_device(dev);
-		usbi_mutex_destroy(&_dev_handle->lock);
-		free(_dev_handle);
+		usbi_device_handle_delete(_dev_handle);
 		return r;
 	}
 
@@ -1383,9 +1400,7 @@ static void do_close(struct libusb_context *ctx,
 	usbi_mutex_unlock(&ctx->open_devs_lock);
 
 	usbi_backend->close(dev_handle);
-	libusb_unref_device(dev_handle->dev);
-	usbi_mutex_destroy(&dev_handle->lock);
-	free(dev_handle);
+	usbi_device_handle_delete(dev_handle);
 }
 
 /** \ingroup libusb_dev
