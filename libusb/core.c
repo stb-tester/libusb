@@ -1282,6 +1282,77 @@ int API_EXPORTED libusb_open(libusb_device *dev,
 	return 0;
 }
 
+#if defined(OS_LINUX)
+/** \ingroup libusb_dev
+ * Open a device and obtain a device handle. A handle allows you to perform
+ * I/O on the device in question.
+ *
+ * Instead of opening the device itself this function accepts an open file
+ * descriptor that it will take ownership of.
+ *
+ * Internally, this function adds a reference to the device and makes it
+ * available to you through libusb_get_device(). This reference is removed
+ * during libusb_close().
+ *
+ * This is a non-blocking function; no requests are sent over the bus.
+ *
+ * \param dev the device to open
+ * \param fd open file handle to the device
+ * \param handle output location for the returned device handle pointer. Only
+ * populated when the return code is 0.
+ * \returns 0 on success
+ * \returns LIBUSB_ERROR_NO_MEM on memory allocation failure
+ * \returns LIBUSB_ERROR_ACCESS if the user has insufficient permissions
+ * \returns LIBUSB_ERROR_NO_DEVICE if the device has been disconnected
+ * \returns another LIBUSB_ERROR code on other failure
+ */
+int API_EXPORTED libusb_open_fd(libusb_device *dev,
+	int fd,
+	libusb_device_handle **dev_handle)
+{
+	struct libusb_context *ctx = DEVICE_CTX(dev);
+	struct libusb_device_handle *_dev_handle;
+	size_t priv_size = usbi_backend->device_handle_priv_size;
+	int r;
+	usbi_dbg("open %d.%d", dev->bus_number, dev->device_address);
+
+	if (!dev->attached) {
+		return LIBUSB_ERROR_NO_DEVICE;
+	}
+
+	_dev_handle = malloc(sizeof(*_dev_handle) + priv_size);
+	if (!_dev_handle)
+		return LIBUSB_ERROR_NO_MEM;
+
+	r = usbi_mutex_init(&_dev_handle->lock);
+	if (r) {
+		free(_dev_handle);
+		return LIBUSB_ERROR_OTHER;
+	}
+
+	_dev_handle->dev = libusb_ref_device(dev);
+	_dev_handle->auto_detach_kernel_driver = 0;
+	_dev_handle->claimed_interfaces = 0;
+	memset(&_dev_handle->os_priv, 0, priv_size);
+
+	r = usbi_backend->open_fd(_dev_handle, fd);
+	if (r < 0) {
+		usbi_dbg("open_fd %d.%d returns %d", dev->bus_number, dev->device_address, r);
+		libusb_unref_device(dev);
+		usbi_mutex_destroy(&_dev_handle->lock);
+		free(_dev_handle);
+		return r;
+	}
+
+	usbi_mutex_lock(&ctx->open_devs_lock);
+	list_add(&_dev_handle->list, &ctx->open_devs);
+	usbi_mutex_unlock(&ctx->open_devs_lock);
+	*dev_handle = _dev_handle;
+
+	return 0;
+}
+#endif /* defined(OS_LINUX) */
+
 /** \ingroup libusb_dev
  * Convenience function for finding a device with a particular
  * <tt>idVendor</tt>/<tt>idProduct</tt> combination. This function is intended
